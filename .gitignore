@@ -24,5 +24,9 @@ cmake_install.cmake
 Makefile
 compile_commands.json
 
+# Python
+__pycache__/
+*.pyc
+
 # OS files
 Thumbs.db
