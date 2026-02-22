@@ -127,9 +127,11 @@ void Level::buildWorld1_1() {
     addBrick(93, 5);
     addQuestionBlock(94, 5, TileType::QUESTION_COIN);
 
-    addBrick(94, 9, TileType::BRICK);
-    addQuestionBlock(100, 9, TileType::QUESTION_STAR);
-    addBrick(101, 9);
+    // 10-coin brick (multi-hit, timed — dispenses up to 10 coins)
+    m_tilemap.setTile(94, 9, TileType::BRICK_COINS);
+
+    // Starman brick (looks like a regular brick, contains Starman)
+    m_tilemap.setTile(101, 9, TileType::BRICK_STAR);
 
     // Hidden 1-UP block
     m_tilemap.setTile(64, 9, TileType::HIDDEN_1UP);
@@ -340,8 +342,6 @@ void Level::buildWorld1_1() {
     // Koopa Troopa
     m_enemySpawns.push_back({ EnemySpawn::KOOPA, 107 * 16.0f, 11 * 16.0f });
 
-    // Piranha Plants (in pipes)
-    m_enemySpawns.push_back({ EnemySpawn::PIRANHA, 38 * 16.0f, 10 * 16.0f });
-    m_enemySpawns.push_back({ EnemySpawn::PIRANHA, 46 * 16.0f, 9 * 16.0f });
-    m_enemySpawns.push_back({ EnemySpawn::PIRANHA, 57 * 16.0f, 9 * 16.0f });
+    // NOTE: World 1-1 is the ONLY level with NO Piranha Plants.
+    // (Confirmed by SMB disassembly research)
 }

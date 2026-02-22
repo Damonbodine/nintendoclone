@@ -7,6 +7,8 @@ enum class TileType : uint8_t {
     EMPTY = 0,           // Sky / passable
     GROUND,              // Solid brown ground
     BRICK,               // Breakable brick block
+    BRICK_COINS,         // Multi-hit brick containing up to 10 coins (timed)
+    BRICK_STAR,          // Brick containing a Starman
     QUESTION_COIN,       // ? block containing a coin
     QUESTION_MUSHROOM,   // ? block containing mushroom/fire flower
     QUESTION_STAR,       // ? block containing star
@@ -53,6 +55,8 @@ namespace TileProperties {
         switch (type) {
             case TileType::GROUND:
             case TileType::BRICK:
+            case TileType::BRICK_COINS:
+            case TileType::BRICK_STAR:
             case TileType::QUESTION_COIN:
             case TileType::QUESTION_MUSHROOM:
             case TileType::QUESTION_STAR:
@@ -84,7 +88,9 @@ namespace TileProperties {
     }
 
     inline bool isBrick(TileType type) {
-        return type == TileType::BRICK;
+        return type == TileType::BRICK ||
+               type == TileType::BRICK_COINS ||
+               type == TileType::BRICK_STAR;
     }
 
     inline bool isPipe(TileType type) {

@@ -3,6 +3,7 @@
 #include <SDL2/SDL.h>
 #include <vector>
 #include <string>
+#include <unordered_map>
 #include "world/Tile.h"
 
 class Renderer;
@@ -73,6 +74,10 @@ private:
 
     std::vector<BumpAnimation> m_bumpAnims;
     int m_globalAnimTimer = 0;  // For ? block shimmer
+
+    // Multi-coin brick tracking: maps tile index -> coins remaining
+    std::unordered_map<int, int> m_coinBrickCounters;
+    std::unordered_map<int, int> m_coinBrickTimers;  // Countdown timer per brick
 
     int tileIndex(int x, int y) const { return y * m_width + x; }
     bool inBounds(int x, int y) const { return x >= 0 && x < m_width && y >= 0 && y < m_height; }

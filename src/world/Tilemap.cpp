@@ -133,7 +133,37 @@ Tilemap::BlockHitResult Tilemap::hitBlockFromBelow(int tileX, int tileY, bool is
 
         // Start bump animation
         m_bumpAnims.push_back({ tileX, tileY, 16, 0.0f });
+    } else if (type == TileType::BRICK_COINS) {
+        // Multi-coin brick: dispenses up to 10 coins, has countdown timer
+        int idx = tileIndex(tileX, tileY);
+        if (m_coinBrickCounters.find(idx) == m_coinBrickCounters.end()) {
+            m_coinBrickCounters[idx] = 10;
+            m_coinBrickTimers[idx] = 300;  // ~5 seconds to hit all coins
+        }
+
+        m_coinBrickCounters[idx]--;
+        m_coinBrickTimers[idx] -= 30;  // Each hit reduces timer
+
+        result.spawnsItem = true;
+        result.originalType = TileType::QUESTION_COIN;  // Spawn a coin
+
+        if (m_coinBrickCounters[idx] <= 0 || m_coinBrickTimers[idx] <= 0) {
+            // Out of coins or timer expired — become used block
+            m_tiles[idx] = TileType::USED_BLOCK;
+            m_coinBrickCounters.erase(idx);
+            m_coinBrickTimers.erase(idx);
+        }
+
+        m_bumpAnims.push_back({ tileX, tileY, 16, 0.0f });
+    } else if (type == TileType::BRICK_STAR) {
+        // Star brick: looks like a brick but contains a Starman
+        m_tiles[tileIndex(tileX, tileY)] = TileType::USED_BLOCK;
+        result.spawnsItem = true;
+        result.originalType = TileType::QUESTION_STAR;  // Spawn a star
+
+        m_bumpAnims.push_back({ tileX, tileY, 16, 0.0f });
     } else if (TileProperties::isBrick(type)) {
+        // Regular brick
         if (isBigMario) {
             // Big Mario breaks bricks
             m_tiles[tileIndex(tileX, tileY)] = TileType::EMPTY;
@@ -149,6 +179,19 @@ Tilemap::BlockHitResult Tilemap::hitBlockFromBelow(int tileX, int tileY, bool is
 
 void Tilemap::updateAnimations() {
     m_globalAnimTimer++;
+
+    // Update multi-coin brick timers (expire → become used block)
+    for (auto it = m_coinBrickTimers.begin(); it != m_coinBrickTimers.end(); ) {
+        it->second--;
+        if (it->second <= 0) {
+            int idx = it->first;
+            m_tiles[idx] = TileType::USED_BLOCK;
+            m_coinBrickCounters.erase(idx);
+            it = m_coinBrickTimers.erase(it);
+        } else {
+            ++it;
+        }
+    }
 
     // Update bump animations
     for (auto it = m_bumpAnims.begin(); it != m_bumpAnims.end(); ) {
@@ -185,7 +228,9 @@ int Tilemap::getTileFrame(TileType type) const {
     switch (type) {
         case TileType::EMPTY:             return -1;  // Don't render
         case TileType::GROUND:            return 0;
-        case TileType::BRICK:             return 1;
+        case TileType::BRICK:
+        case TileType::BRICK_COINS:
+        case TileType::BRICK_STAR:        return 1;  // All bricks look identical
         case TileType::QUESTION_COIN:
         case TileType::QUESTION_MUSHROOM:
         case TileType::QUESTION_STAR:

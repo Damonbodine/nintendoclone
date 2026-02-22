@@ -154,12 +154,17 @@ void Mario::updateJump() {
 }
 
 void Mario::updatePhysics(const Tilemap& tilemap) {
-    // Apply gravity
+    // Apply gravity — NES uses speed-dependent gravity values
+    // Low-speed jump (types 0-2): held=$20, released=$70
+    // High-speed jump (types 3-4): held=$28, released=$90
+    bool isFastJump = std::abs(vx) >= Constants::MARIO_RUN_MAX_SPEED * 0.7f;
     float gravity;
     if (vy < 0 && m_jumpHeld) {
-        gravity = Constants::GRAVITY_JUMP_HELD;  // Low gravity while holding jump going up
+        gravity = isFastJump ? Constants::GRAVITY_JUMP_HELD_FAST
+                             : Constants::GRAVITY_JUMP_HELD;
     } else {
-        gravity = Constants::GRAVITY_JUMP_RELEASED;  // High gravity
+        gravity = isFastJump ? Constants::GRAVITY_JUMP_RELEASED_FAST
+                             : Constants::GRAVITY_JUMP_RELEASED;
     }
 
     applyGravity(gravity, Constants::TERMINAL_VELOCITY);

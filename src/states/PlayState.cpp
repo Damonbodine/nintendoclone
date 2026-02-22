@@ -196,7 +196,11 @@ void PlayState::update(Game& game) {
     updateItems();
 
     // Collision checks
-    checkMarioEnemyCollisions();
+    // NES quirk: enemy collision only checked on even frames (FrameCounter bit 0 clear)
+    Uint64 frameCount = m_game.getTimer().getFrameCount();
+    if (!Constants::ENEMY_COLLISION_EVEN_FRAMES_ONLY || (frameCount % 2 == 0)) {
+        checkMarioEnemyCollisions();
+    }
     checkMarioItemCollisions();
     checkFireballCollisions();
     checkShellCollisions();
