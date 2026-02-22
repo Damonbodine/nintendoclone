@@ -221,20 +221,23 @@ void Mario::updateAnimationState() {
     }
 
     // Update animation name on sprite
-    std::string animName;
+    // Big/Fire Mario uses "big_" prefixed animation names
+    std::string baseName;
     switch (m_marioState) {
-        case MarioState::IDLE:  animName = "idle"; break;
-        case MarioState::WALK:  animName = "walk"; break;
-        case MarioState::RUN:   animName = "walk"; break;  // Same anim, faster speed
-        case MarioState::SKID:  animName = "skid"; break;
-        case MarioState::JUMP:  animName = "jump"; break;
-        case MarioState::FALL:  animName = "jump"; break;  // Same as jump in original
-        case MarioState::CROUCH: animName = "crouch"; break;
-        case MarioState::CLIMB: animName = "climb"; break;
-        case MarioState::DIE:   animName = "die"; break;
-        default: animName = "idle"; break;
+        case MarioState::IDLE:  baseName = "idle"; break;
+        case MarioState::WALK:  baseName = "walk"; break;
+        case MarioState::RUN:   baseName = "walk"; break;
+        case MarioState::SKID:  baseName = "skid"; break;
+        case MarioState::JUMP:  baseName = "jump"; break;
+        case MarioState::FALL:  baseName = "jump"; break;
+        case MarioState::CROUCH: baseName = "crouch"; break;
+        case MarioState::CLIMB: baseName = "climb"; break;
+        case MarioState::DIE:   baseName = "die"; break;
+        default: baseName = "idle"; break;
     }
 
+    std::string animName = (m_powerState != PowerState::SMALL)
+        ? "big_" + baseName : baseName;
     sprite.setAnimation(animName);
 
     // Scale walk animation speed with velocity

@@ -76,6 +76,9 @@ private:
     SpriteSheet m_fontSheet;
     std::string m_fontCharMap;
 
+    // Track Mario power state for sprite sheet swapping
+    PowerState m_lastPowerState = PowerState::SMALL;
+
     // Methods
     void loadAssets();
     void loadFont();

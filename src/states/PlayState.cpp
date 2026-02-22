@@ -96,28 +96,17 @@ void PlayState::loadAssets() {
 }
 
 void PlayState::setupMarioAnimations() {
-    // Set up Mario's animations.
-    // These reference frames in the sprite sheet.
     // Small Mario: 16x16 per frame, laid out horizontally
-    // Frame 0: idle
-    // Frame 1-3: walk
-    // Frame 4: jump
-    // Frame 5: skid
-    // Frame 6: die
-
+    // Frame 0: idle, 1-3: walk, 4: jump, 5: skid, 6: die
     if (m_marioSmallSheet.getTexture()) {
         Animation idle;
         idle.init(&m_marioSmallSheet, { {0, 1} });
-
         Animation walk;
         walk.init(&m_marioSmallSheet, { {1, 6}, {2, 6}, {3, 6} });
-
         Animation jump;
         jump.init(&m_marioSmallSheet, { {4, 1} });
-
         Animation skid;
         skid.init(&m_marioSmallSheet, { {5, 1} });
-
         Animation die;
         die.init(&m_marioSmallSheet, { {6, 1} }, false);
 
@@ -126,9 +115,34 @@ void PlayState::setupMarioAnimations() {
         m_mario.sprite.addAnimation("jump", jump);
         m_mario.sprite.addAnimation("skid", skid);
         m_mario.sprite.addAnimation("die", die);
-
         m_mario.sprite.setAnimation("idle");
     }
+
+    // Big Mario: 16x32 per frame, same frame layout
+    if (m_marioBigSheet.getTexture()) {
+        Animation bigIdle;
+        bigIdle.init(&m_marioBigSheet, { {0, 1} });
+        Animation bigWalk;
+        bigWalk.init(&m_marioBigSheet, { {1, 6}, {2, 6}, {3, 6} });
+        Animation bigJump;
+        bigJump.init(&m_marioBigSheet, { {4, 1} });
+        Animation bigSkid;
+        bigSkid.init(&m_marioBigSheet, { {5, 1} });
+        Animation bigDie;
+        bigDie.init(&m_marioBigSheet, { {6, 1} }, false);
+        // Crouch reuses the skid frame for now
+        Animation bigCrouch;
+        bigCrouch.init(&m_marioBigSheet, { {5, 1} });
+
+        m_mario.sprite.addAnimation("big_idle", bigIdle);
+        m_mario.sprite.addAnimation("big_walk", bigWalk);
+        m_mario.sprite.addAnimation("big_jump", bigJump);
+        m_mario.sprite.addAnimation("big_skid", bigSkid);
+        m_mario.sprite.addAnimation("big_die", bigDie);
+        m_mario.sprite.addAnimation("big_crouch", bigCrouch);
+    }
+
+    m_lastPowerState = m_mario.getPowerState();
 }
 
 void PlayState::loadFont() {
@@ -316,6 +330,33 @@ void PlayState::update(Game& game) {
 void PlayState::updateMario(Game& game) {
     m_mario.handleInput(game.getInput());
     m_mario.update(m_level.getTilemap());
+
+    // Swap sprite sheet when power state changes (small <-> big/fire)
+    PowerState currentPower = m_mario.getPowerState();
+    if (currentPower != m_lastPowerState) {
+        bool wasBig = (m_lastPowerState != PowerState::SMALL);
+        bool isBig = (currentPower != PowerState::SMALL);
+
+        if (wasBig != isBig) {
+            // Need to swap animation set (small <-> big prefix)
+            std::string currentAnim = m_mario.sprite.getCurrentAnimationName();
+
+            if (isBig) {
+                // Switch to big_ prefix animations
+                // Map: "idle" -> "big_idle", etc.
+                if (currentAnim.find("big_") != 0) {
+                    m_mario.sprite.setAnimation("big_" + currentAnim);
+                }
+            } else {
+                // Switch back to small animations
+                // Map: "big_idle" -> "idle", etc.
+                if (currentAnim.find("big_") == 0) {
+                    m_mario.sprite.setAnimation(currentAnim.substr(4));
+                }
+            }
+        }
+        m_lastPowerState = currentPower;
+    }
 
     // Check for block hits from below
     if (m_mario.vy <= 0) {
