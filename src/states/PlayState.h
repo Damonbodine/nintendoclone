@@ -72,11 +72,22 @@ private:
     bool m_levelComplete = false;
     int m_flagpoleTimer = 0;
 
+    // HUD font
+    SpriteSheet m_fontSheet;
+    std::string m_fontCharMap;
+
     // Methods
     void loadAssets();
+    void loadFont();
     void setupMarioAnimations();
+    void setupEnemyAnimations(Goomba& goomba);
+    void setupKoopaAnimations(KoopaTroopa& koopa);
+    void setupPiranhaAnimations(PiranhaPlant& piranha);
+    void setupMushroomSprite(Mushroom& mushroom);
+    void setupItemSprite(Entity& entity, int frameIndex);
     void spawnEnemies();
     void spawnItems();
+    void drawText(SDL_Renderer* renderer, const std::string& text, int x, int y);
 
     void updateMario(Game& game);
     void updateEnemies();

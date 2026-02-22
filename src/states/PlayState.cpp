@@ -4,6 +4,8 @@
 #include "physics/Collision.h"
 #include <algorithm>
 #include <cstdio>
+#include <fstream>
+#include <sstream>
 
 PlayState::PlayState(Game& game) : m_game(game) {}
 
@@ -24,10 +26,16 @@ void PlayState::enter() {
 
     // Load assets and set up animations
     loadAssets();
+    loadFont();
     setupMarioAnimations();
 
     // Spawn entities from level data
     spawnEnemies();
+
+    // Wire up sprite animations for all spawned enemies
+    for (auto& g : m_goombas) setupEnemyAnimations(*g);
+    for (auto& k : m_koopas) setupKoopaAnimations(*k);
+    for (auto& p : m_piranhas) setupPiranhaAnimations(*p);
 
     // Init timer
     m_timer = m_level.getTimeLimit();
@@ -47,7 +55,6 @@ void PlayState::exit() {
 }
 
 void PlayState::loadAssets() {
-    auto* renderer = m_game.getRenderer().getSDLRenderer();
     auto& resources = m_game.getResources();
 
     // Try to load textures — if they don't exist yet, we'll use colored rectangles
@@ -121,6 +128,97 @@ void PlayState::setupMarioAnimations() {
         m_mario.sprite.addAnimation("die", die);
 
         m_mario.sprite.setAnimation("idle");
+    }
+}
+
+void PlayState::loadFont() {
+    auto& resources = m_game.getResources();
+    SDL_Texture* fontTex = resources.loadTexture("assets/fonts/nes_font.png");
+    if (fontTex) {
+        m_fontSheet.init(fontTex, 8, 8);
+    }
+    // Read character map
+    std::ifstream mapFile("assets/fonts/nes_font_map.txt");
+    if (mapFile.is_open()) {
+        std::getline(mapFile, m_fontCharMap);
+    }
+}
+
+void PlayState::setupEnemyAnimations(Goomba& goomba) {
+    if (!m_enemySheet.getTexture()) return;
+    // Enemy sheet layout: 0=goomba_walk1, 1=goomba_walk2, 2=goomba_squish
+    Animation walk;
+    walk.init(&m_enemySheet, { {0, 8}, {1, 8} });
+    Animation squished;
+    squished.init(&m_enemySheet, { {2, 1} }, false);
+
+    goomba.sprite.addAnimation("walk", walk);
+    goomba.sprite.addAnimation("squished", squished);
+    goomba.sprite.setAnimation("walk");
+}
+
+void PlayState::setupKoopaAnimations(KoopaTroopa& koopa) {
+    if (!m_enemySheet.getTexture()) return;
+    // Enemy sheet: 3=koopa_walk1, 4=koopa_walk2, 5=shell, 6-9=spin
+    Animation walk;
+    walk.init(&m_enemySheet, { {3, 8}, {4, 8} });
+    Animation shellIdle;
+    shellIdle.init(&m_enemySheet, { {5, 1} });
+    Animation shellSpin;
+    shellSpin.init(&m_enemySheet, { {6, 2}, {7, 2}, {8, 2}, {9, 2} });
+
+    koopa.sprite.addAnimation("walk", walk);
+    koopa.sprite.addAnimation("shell_idle", shellIdle);
+    koopa.sprite.addAnimation("shell_spin", shellSpin);
+    koopa.sprite.setAnimation("walk");
+}
+
+void PlayState::setupPiranhaAnimations(PiranhaPlant& piranha) {
+    if (!m_enemySheet.getTexture()) return;
+    // Enemy sheet: 10=piranha_closed, 11=piranha_open
+    Animation chomp;
+    chomp.init(&m_enemySheet, { {10, 8}, {11, 8} });
+
+    piranha.sprite.addAnimation("chomp", chomp);
+    piranha.sprite.setAnimation("chomp");
+}
+
+void PlayState::setupMushroomSprite(Mushroom& mushroom) {
+    if (!m_itemSheet.getTexture()) return;
+    // Items sheet: 0=mushroom, 4=1up_mushroom
+    int frame = mushroom.isOneUp() ? 4 : 0;
+    Animation idle;
+    idle.init(&m_itemSheet, { {frame, 1} });
+    mushroom.sprite.addAnimation("idle", idle);
+    mushroom.sprite.setAnimation("idle");
+}
+
+void PlayState::setupItemSprite(Entity& entity, int frameIndex) {
+    if (!m_itemSheet.getTexture()) return;
+    Animation idle;
+    idle.init(&m_itemSheet, { {frameIndex, 1} });
+    entity.sprite.addAnimation("idle", idle);
+    entity.sprite.setAnimation("idle");
+}
+
+void PlayState::drawText(SDL_Renderer* renderer, const std::string& text, int x, int y) {
+    if (!m_fontSheet.getTexture() || m_fontCharMap.empty()) return;
+
+    for (size_t i = 0; i < text.size(); i++) {
+        char ch = text[i];
+        // Convert lowercase to uppercase
+        if (ch >= 'a' && ch <= 'z') ch = ch - 'a' + 'A';
+
+        size_t idx = m_fontCharMap.find(ch);
+        if (idx == std::string::npos) {
+            // Unknown char — skip (renders as blank space)
+            x += 8;
+            continue;
+        }
+
+        SDL_Rect src = m_fontSheet.getFrameRect(static_cast<int>(idx));
+        SDL_Rect dst = { x + static_cast<int>(i) * 8, y, 8, 8 };
+        SDL_RenderCopy(renderer, m_fontSheet.getTexture(), &src, &dst);
     }
 }
 
@@ -586,10 +684,12 @@ void PlayState::handleBlockHit(int tileX, int tileY) {
                 if (m_mario.getPowerState() == PowerState::SMALL) {
                     auto mushroom = std::make_unique<Mushroom>();
                     mushroom->startEmerge(blockWorldX, blockWorldY);
+                    setupMushroomSprite(*mushroom);
                     m_mushrooms.push_back(std::move(mushroom));
                 } else {
                     auto flower = std::make_unique<FireFlower>();
                     flower->startEmerge(blockWorldX, blockWorldY);
+                    setupItemSprite(*flower, 1);  // fire flower = frame 1
                     m_fireFlowers.push_back(std::move(flower));
                 }
                 break;
@@ -597,6 +697,7 @@ void PlayState::handleBlockHit(int tileX, int tileY) {
             case TileType::QUESTION_STAR: {
                 auto star = std::make_unique<Starman>();
                 star->startEmerge(blockWorldX, blockWorldY);
+                setupItemSprite(*star, 2);  // star = frame 2
                 m_stars.push_back(std::move(star));
                 break;
             }
@@ -604,6 +705,7 @@ void PlayState::handleBlockHit(int tileX, int tileY) {
             case TileType::HIDDEN_1UP: {
                 auto mushroom = std::make_unique<Mushroom>(true);
                 mushroom->startEmerge(blockWorldX, blockWorldY);
+                setupMushroomSprite(*mushroom);
                 m_mushrooms.push_back(std::move(mushroom));
                 break;
             }
@@ -614,9 +716,6 @@ void PlayState::handleBlockHit(int tileX, int tileY) {
 }
 
 void PlayState::render(SDL_Renderer* renderer) {
-    float camX = m_camera.getX();
-    float camY = m_camera.getY();
-
     // Render world
     renderWorld(renderer);
 
@@ -725,19 +824,32 @@ void PlayState::renderEffects(SDL_Renderer* renderer) {
 }
 
 void PlayState::renderHUD(SDL_Renderer* renderer) {
-    // Placeholder HUD rendering with colored rectangles.
-    // Full bitmap font rendering will replace this.
+    // NES SMB HUD layout (at NES resolution 256x240):
+    // Row 1 (y=8):  MARIO         WORLD    TIME
+    // Row 2 (y=16): 000000  x00   1-1       400
 
-    // Top bar background (semi-transparent black)
-    SDL_SetRenderDrawColor(renderer, 0, 0, 0, 128);
-    SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
-    SDL_Rect hudBg = { 0, 0, Constants::NES_WIDTH, 24 };
-    SDL_RenderFillRect(renderer, &hudBg);
-    SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_NONE);
+    // Labels
+    drawText(renderer, "MARIO", 24, 8);
+    drawText(renderer, "WORLD", 144, 8);
+    drawText(renderer, "TIME", 200, 8);
 
-    // TODO: Render actual text with bitmap font
-    // MARIO     WORLD   TIME
-    // 000000    1-1     400
+    // Score (6 digits, zero-padded)
+    char scoreBuf[16];
+    std::snprintf(scoreBuf, sizeof(scoreBuf), "%06d", m_mario.score);
+    drawText(renderer, scoreBuf, 24, 16);
+
+    // Coin count
+    char coinBuf[8];
+    std::snprintf(coinBuf, sizeof(coinBuf), "x%02d", m_mario.coins);
+    drawText(renderer, coinBuf, 96, 16);
+
+    // World number
+    drawText(renderer, "1-1", 152, 16);
+
+    // Timer (3 digits)
+    char timerBuf[8];
+    std::snprintf(timerBuf, sizeof(timerBuf), "%3d", m_timer);
+    drawText(renderer, timerBuf, 208, 16);
 }
 
 void PlayState::addScorePopup(float x, float y, int value) {
