@@ -132,10 +132,12 @@ bool isStomping(const AABB& attacker, const AABB& target, float attackerVelY) {
     // Attacker must be moving downward
     if (attackerVelY <= 0) return false;
 
-    // Attacker's bottom must be in the top half of the target
-    float targetMidY = target.top() + target.h / 2.0f;
-    return attacker.bottom() <= targetMidY + 4.0f &&  // Small tolerance
-           attacker.bottom() >= target.top();
+    // Attacker's bottom must be in the top portion of the target.
+    // Use generous tolerance — at high fall speeds Mario can penetrate
+    // several pixels per frame, and tilemap collision may have shifted him.
+    float targetMidY = target.top() + target.h * 0.6f;
+    return attacker.bottom() <= targetMidY + 6.0f &&
+           attacker.bottom() >= target.top() - 4.0f;
 }
 
 }  // namespace Collision

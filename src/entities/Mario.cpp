@@ -67,7 +67,15 @@ void Mario::updateHorizontalMovement() {
             m_marioState = MarioState::SKID;
         } else {
             vx += accel;
-            if (vx > maxSpeed) vx = maxSpeed;
+            if (vx > maxSpeed) {
+                // When B is released, gradually decelerate from run speed to walk speed
+                // instead of hard-capping immediately
+                if (!m_inputRun && vx > Constants::MARIO_WALK_MAX_SPEED) {
+                    vx -= Constants::MARIO_FRICTION;
+                } else {
+                    vx = maxSpeed;
+                }
+            }
         }
         facingRight = true;
     } else if (m_inputLeft) {
@@ -78,7 +86,13 @@ void Mario::updateHorizontalMovement() {
             m_marioState = MarioState::SKID;
         } else {
             vx -= accel;
-            if (vx < -maxSpeed) vx = -maxSpeed;
+            if (vx < -maxSpeed) {
+                if (!m_inputRun && vx < -Constants::MARIO_WALK_MAX_SPEED) {
+                    vx += Constants::MARIO_FRICTION;
+                } else {
+                    vx = -maxSpeed;
+                }
+            }
         }
         facingRight = false;
     } else {
@@ -90,13 +104,6 @@ void Mario::updateHorizontalMovement() {
             vx += Constants::MARIO_FRICTION;
             if (vx > 0) vx = 0;
         }
-    }
-
-    // Reduced air control
-    if (!onGround) {
-        // In the original, air control exists but is reduced.
-        // We handle this by using the same acceleration but keeping it.
-        // The feel comes from not being able to reverse as quickly in air.
     }
 
     // Crouch (big Mario only)
@@ -169,17 +176,11 @@ void Mario::updatePhysics(const Tilemap& tilemap) {
 
     applyGravity(gravity, Constants::TERMINAL_VELOCITY);
 
-    // Save pre-collision state for block hit detection
-    float oldY = y;
+    // Save pre-collision velocity for stomp and block hit detection in PlayState
+    preCollisionVy = vy;
 
     // Resolve collision with tilemap
     resolveCollisionWithTilemap(tilemap);
-
-    // Check for block hits (hitting blocks from below)
-    if (vy == 0 && oldY > y) {
-        // We were moving up and got stopped — might have hit a block
-        // (This is handled in checkBlockHits)
-    }
 
     // Fall death check
     if (y > tilemap.getPixelHeight() + 32) {
@@ -246,12 +247,14 @@ void Mario::updateAnimationState() {
         if (anim) {
             float speed = std::abs(vx);
             int frameDuration;
-            if (speed < 1.0f) {
-                frameDuration = 8;
-            } else if (speed < 2.0f) {
-                frameDuration = 5;
+            if (speed < 0.8f) {
+                frameDuration = 10;
+            } else if (speed < 1.5f) {
+                frameDuration = 6;
+            } else if (speed < 2.2f) {
+                frameDuration = 4;
             } else {
-                frameDuration = 3;
+                frameDuration = 2;
             }
             anim->setFrameDuration(frameDuration);
         }

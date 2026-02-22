@@ -29,6 +29,7 @@ public:
 
     KoopaState getKoopaState() const { return m_state; }
     bool isShellMoving() const { return m_state == KoopaState::SHELL_MOVING; }
+    bool isFlipped() const { return m_flipped; }
 
 private:
     KoopaState m_state = KoopaState::WALKING;

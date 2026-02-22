@@ -53,6 +53,9 @@ public:
     bool isDead() const { return m_marioState == MarioState::DIE; }
     bool isGrounded() const { return onGround; }
 
+    // Pre-collision velocity (saved before tilemap resolution, for stomp/block checks)
+    float preCollisionVy = 0;
+
     // Score and stats
     int score = 0;
     int coins = 0;

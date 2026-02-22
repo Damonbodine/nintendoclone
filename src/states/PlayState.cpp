@@ -307,12 +307,8 @@ void PlayState::update(Game& game) {
     // Update items
     updateItems();
 
-    // Collision checks
-    // NES quirk: enemy collision only checked on even frames (FrameCounter bit 0 clear)
-    Uint64 frameCount = m_game.getTimer().getFrameCount();
-    if (!Constants::ENEMY_COLLISION_EVEN_FRAMES_ONLY || (frameCount % 2 == 0)) {
-        checkMarioEnemyCollisions();
-    }
+    // Collision checks — run every frame for reliable stomp detection
+    checkMarioEnemyCollisions();
     checkMarioItemCollisions();
     checkFireballCollisions();
     checkShellCollisions();
@@ -358,19 +354,46 @@ void PlayState::updateMario(Game& game) {
         m_lastPowerState = currentPower;
     }
 
-    // Check for block hits from below
-    if (m_mario.vy <= 0) {
-        // Mario is moving upward — check for block collision above
+    // Check for block hits from below.
+    // Use preCollisionVy: after resolveCollisionWithTilemap(), vy is zeroed on ceiling hit.
+    // Check the tile at Mario's head AND one tile above (collision pushed him down).
+    if (m_mario.preCollisionVy < 0) {
         AABB marioBox = m_mario.getWorldBounds();
         int leftTile = static_cast<int>(marioBox.left()) / Constants::TILE_SIZE;
         int rightTile = static_cast<int>(marioBox.right() - 0.001f) / Constants::TILE_SIZE;
-        int topTile = static_cast<int>(marioBox.top()) / Constants::TILE_SIZE;
+        int headTile = static_cast<int>(marioBox.top()) / Constants::TILE_SIZE;
+        int aboveTile = headTile - 1;
 
-        for (int tx = leftTile; tx <= rightTile; tx++) {
-            TileType tile = m_level.getTilemap().getTile(tx, topTile);
-            if (TileProperties::isInteractive(tile)) {
-                handleBlockHit(tx, topTile);
+        for (int checkY : {headTile, aboveTile}) {
+            if (checkY < 0) continue;
+            for (int tx = leftTile; tx <= rightTile; tx++) {
+                TileType tile = m_level.getTilemap().getTile(tx, checkY);
+                if (TileProperties::isInteractive(tile)) {
+                    handleBlockHit(tx, checkY);
+                }
             }
+        }
+    }
+
+    // Check flagpole collision (level complete)
+    if (!m_levelComplete) {
+        AABB marioBox = m_mario.getWorldBounds();
+        int marioTileX = static_cast<int>(marioBox.centerX()) / Constants::TILE_SIZE;
+        int marioTileY = static_cast<int>(marioBox.centerY()) / Constants::TILE_SIZE;
+
+        // Check if Mario touches the flagpole column (check a 3-tile wide area)
+        for (int tx = marioTileX - 1; tx <= marioTileX + 1; tx++) {
+            for (int ty = marioTileY - 1; ty <= marioTileY + 1; ty++) {
+                TileType tile = m_level.getTilemap().getTile(tx, ty);
+                if (TileProperties::isFlagpole(tile)) {
+                    m_levelComplete = true;
+                    m_flagpoleTimer = 0;
+                    m_mario.vx = 0;
+                    addScore(2000);
+                    break;
+                }
+            }
+            if (m_levelComplete) break;
         }
     }
 }
@@ -465,6 +488,11 @@ void PlayState::checkMarioEnemyCollisions() {
 
     AABB marioBox = m_mario.getWorldBounds();
 
+    // Use pre-collision velocity for stomp detection.
+    // After resolveCollisionWithTilemap(), vy is zeroed when Mario lands on the
+    // same ground tile as an enemy, which would make isStomping() always fail.
+    float stompVy = m_mario.preCollisionVy;
+
     // Goombas
     for (auto& goomba : m_goombas) {
         if (!goomba->alive || !goomba->active || goomba->isSquished()) continue;
@@ -472,13 +500,13 @@ void PlayState::checkMarioEnemyCollisions() {
         AABB goombaBox = goomba->getWorldBounds();
         if (!marioBox.overlaps(goombaBox)) continue;
 
-        if (Collision::isStomping(marioBox, goombaBox, m_mario.vy)) {
+        if (Collision::isStomping(marioBox, goombaBox, stompVy)) {
             // Stomp!
             goomba->stomp();
             m_mario.vy = -4.0f;  // Bounce
             m_mario.stompCombo++;
 
-            int points = 100;  // TODO: scale with stomp combo
+            int points = 100;
             addScore(points);
             addScorePopup(goomba->x, goomba->y, points);
         } else if (!m_mario.isInvincible()) {
@@ -494,11 +522,12 @@ void PlayState::checkMarioEnemyCollisions() {
     // Koopas
     for (auto& koopa : m_koopas) {
         if (!koopa->alive || !koopa->active) continue;
+        if (koopa->isFlipped()) continue;
 
         AABB koopaBox = koopa->getWorldBounds();
         if (!marioBox.overlaps(koopaBox)) continue;
 
-        if (Collision::isStomping(marioBox, koopaBox, m_mario.vy)) {
+        if (Collision::isStomping(marioBox, koopaBox, stompVy)) {
             koopa->stomp();
             m_mario.vy = -4.0f;
 
