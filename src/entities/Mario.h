@@ -56,6 +56,10 @@ public:
     // Pre-collision velocity (saved before tilemap resolution, for stomp/block checks)
     float preCollisionVy = 0;
 
+    // Event flags (read and cleared by PlayState each frame for audio/effects)
+    bool justJumped = false;
+    bool justDied = false;
+
     // Score and stats
     int score = 0;
     int coins = 0;

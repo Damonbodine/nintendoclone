@@ -24,6 +24,10 @@ void Mario::handleInput(const Input& input) {
 void Mario::update(const Tilemap& tilemap) {
     if (!alive) return;
 
+    // Clear per-frame event flags
+    justJumped = false;
+    justDied = false;
+
     // Handle transition animations
     if (m_marioState == MarioState::GROW || m_marioState == MarioState::SHRINK) {
         m_transitionTimer--;
@@ -146,7 +150,8 @@ void Mario::updateJump() {
         m_jumpHeld = true;
         m_hasJumped = true;
         m_jumpBufferTimer = 0;
-        stompCombo = 0;  // Reset stomp combo when jumping from ground
+        stompCombo = 0;
+        justJumped = true;
     }
 
     // Variable-height jump: if button is held, use low gravity
@@ -358,8 +363,9 @@ void Mario::die() {
     lives--;
     vx = 0;
     vy = 0;
-    m_deathVy = Constants::MARIO_JUMP_VELOCITY_WALK;  // Pop up
+    m_deathVy = Constants::MARIO_JUMP_VELOCITY_WALK;
     m_deathTimer = 0;
+    justDied = true;
 
     sprite.setAnimation("die");
 }

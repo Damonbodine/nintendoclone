@@ -1,4 +1,5 @@
 #include "states/PlayState.h"
+#include "states/TitleState.h"
 #include "core/Game.h"
 #include "core/Constants.h"
 #include "physics/Collision.h"
@@ -40,6 +41,9 @@ void PlayState::enter() {
     // Init timer
     m_timer = m_level.getTimeLimit();
     m_timerCounter = 0;
+
+    // Start background music
+    m_game.getAudio().playMusic("overworld");
 }
 
 void PlayState::exit() {
@@ -281,14 +285,51 @@ void PlayState::update(Game& game) {
     }
 
     // Pause
-    if (game.getInput().isPressed(Input::START)) {
+    if (game.getInput().isPressed(Input::START) && !m_mario.isDead() && !m_gameOver) {
         m_paused = true;
         return;
     }
 
+    // Game over screen — wait then return to title
+    if (m_gameOver) {
+        m_gameOverTimer++;
+        if (m_gameOverTimer > 180 ||
+            (m_gameOverTimer > 60 && game.getInput().isPressed(Input::START))) {
+            game.changeState(std::make_unique<TitleState>(game));
+        }
+        return;
+    }
+
+    // Level complete sequence
     if (m_levelComplete) {
-        // Handle level complete sequence
         m_flagpoleTimer++;
+        // Mario walks right toward the castle
+        if (m_flagpoleTimer > 30 && m_flagpoleTimer < 180) {
+            m_mario.x += 1.0f;
+            m_mario.vx = 1.0f;
+        }
+        // Transition back to title after sequence
+        if (m_flagpoleTimer > 240 ||
+            (m_flagpoleTimer > 60 && game.getInput().isPressed(Input::START))) {
+            game.changeState(std::make_unique<TitleState>(game));
+        }
+        return;
+    }
+
+    // Death sequence — wait for animation, then respawn or game over
+    if (m_mario.isDead()) {
+        m_deathTimer++;
+        // Let death animation play (bounce up and fall off-screen)
+        m_mario.update(m_level.getTilemap());
+        if (m_deathTimer > 180) {
+            if (m_mario.lives <= 0) {
+                m_gameOver = true;
+                m_gameOverTimer = 0;
+            } else {
+                // Respawn: reload the level
+                game.changeState(std::make_unique<PlayState>(game));
+            }
+        }
         return;
     }
 
@@ -321,11 +362,44 @@ void PlayState::update(Game& game) {
 
     // Update HUD
     updateHUD();
+
+    // Clean up dead fireballs and update fireball counter
+    m_fireballs.erase(
+        std::remove_if(m_fireballs.begin(), m_fireballs.end(),
+            [](const std::unique_ptr<Fireball>& fb) { return !fb->alive; }),
+        m_fireballs.end());
+    m_mario.fireballCount = static_cast<int>(m_fireballs.size());
 }
 
 void PlayState::updateMario(Game& game) {
     m_mario.handleInput(game.getInput());
     m_mario.update(m_level.getTilemap());
+
+    // Audio events from Mario
+    auto& audio = m_game.getAudio();
+    if (m_mario.justJumped) audio.playSound("jump");
+    if (m_mario.justDied) {
+        audio.stopMusic();
+        audio.playSound("death");
+    }
+
+    // Fireball throwing (Fire Mario + B pressed)
+    if (m_mario.canThrowFireball() && game.getInput().isPressed(Input::B)) {
+        m_mario.throwFireball();
+        auto fireball = std::make_unique<Fireball>();
+        float fbX = m_mario.facingRight ? m_mario.x + 12 : m_mario.x - 8;
+        fireball->spawn(fbX, m_mario.y + 8, m_mario.facingRight);
+        fireball->active = true;
+        // Set up fireball sprite
+        if (m_itemSheet.getTexture()) {
+            Animation active;
+            active.init(&m_itemSheet, { {3, 4}, {3, 4} });
+            fireball->sprite.addAnimation("active", active);
+            fireball->sprite.addAnimation("explode", active);  // reuse for explode
+            fireball->sprite.setAnimation("active");
+        }
+        m_fireballs.push_back(std::move(fireball));
+    }
 
     // Swap sprite sheet when power state changes (small <-> big/fire)
     PowerState currentPower = m_mario.getPowerState();
@@ -501,10 +575,10 @@ void PlayState::checkMarioEnemyCollisions() {
         if (!marioBox.overlaps(goombaBox)) continue;
 
         if (Collision::isStomping(marioBox, goombaBox, stompVy)) {
-            // Stomp!
             goomba->stomp();
-            m_mario.vy = -4.0f;  // Bounce
+            m_mario.vy = -4.0f;
             m_mario.stompCombo++;
+            m_game.getAudio().playSound("stomp");
 
             int points = 100;
             addScore(points);
@@ -530,15 +604,16 @@ void PlayState::checkMarioEnemyCollisions() {
         if (Collision::isStomping(marioBox, koopaBox, stompVy)) {
             koopa->stomp();
             m_mario.vy = -4.0f;
+            m_game.getAudio().playSound("stomp");
 
             if (koopa->getKoopaState() == KoopaState::WALKING) {
                 addScore(100);
             }
         } else if (koopa->getKoopaState() == KoopaState::SHELL_IDLE) {
-            // Kick the shell
             bool kickRight = m_mario.x < koopa->x;
             koopa->kick(kickRight);
             addScore(400);
+            m_game.getAudio().playSound("bump");
         } else if (!m_mario.isInvincible()) {
             if (m_mario.hasStar()) {
                 koopa->killFlip();
@@ -578,12 +653,12 @@ void PlayState::checkMarioItemCollisions() {
         if (marioBox.overlaps(mushroomBox)) {
             if (mushroom->isOneUp()) {
                 m_mario.lives++;
-                addScore(0);  // 1-UPs don't give score
             } else {
                 m_mario.grow();
                 addScore(1000);
             }
             mushroom->alive = false;
+            m_game.getAudio().playSound("powerup");
             addScorePopup(mushroom->x, mushroom->y, mushroom->isOneUp() ? 0 : 1000);
         }
     }
@@ -597,6 +672,7 @@ void PlayState::checkMarioItemCollisions() {
             m_mario.getFire();
             flower->alive = false;
             addScore(1000);
+            m_game.getAudio().playSound("powerup");
             addScorePopup(flower->x, flower->y, 1000);
         }
     }
@@ -610,6 +686,7 @@ void PlayState::checkMarioItemCollisions() {
             m_mario.collectStar();
             star->alive = false;
             addScore(1000);
+            m_game.getAudio().playSound("powerup");
             addScorePopup(star->x, star->y, 1000);
         }
     }
@@ -622,6 +699,7 @@ void PlayState::checkMarioItemCollisions() {
         if (marioBox.overlaps(coinBox)) {
             coin->collect();
             m_mario.coins++;
+            m_game.getAudio().playSound("coin");
             if (m_mario.coins >= Constants::COINS_FOR_1UP) {
                 m_mario.coins -= Constants::COINS_FOR_1UP;
                 m_mario.lives++;
@@ -725,20 +803,20 @@ void PlayState::handleBlockHit(int tileX, int tileY) {
     auto result = m_level.getTilemap().hitBlockFromBelow(tileX, tileY, isBig);
 
     if (result.breaksBrick) {
-        // Spawn brick break particles
         BrickBreakEffect effect;
         effect.spawn(tileX * Constants::TILE_SIZE, tileY * Constants::TILE_SIZE);
         m_brickEffects.push_back(effect);
+        m_game.getAudio().playSound("bump");
     }
 
     if (result.spawnsItem) {
         float blockWorldX = tileX * Constants::TILE_SIZE;
         float blockWorldY = tileY * Constants::TILE_SIZE;
+        m_game.getAudio().playSound("coin");
 
         switch (result.originalType) {
             case TileType::QUESTION_COIN:
             case TileType::HIDDEN_COIN: {
-                // Coin pop effect
                 CoinPopEffect coinPop;
                 coinPop.spawn(blockWorldX, blockWorldY);
                 m_coinPopEffects.push_back(coinPop);
@@ -880,16 +958,15 @@ void PlayState::renderEffects(SDL_Renderer* renderer) {
         SDL_RenderFillRect(renderer, &rect);
     }
 
-    // Score popups (rendered as simple text position markers for now)
-    // Full font rendering will be implemented with the HUD system
+    // Score popups — render as text
     for (auto& popup : m_scorePopups) {
-        SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
-        SDL_Rect rect = {
-            static_cast<int>(popup.x - camX),
-            static_cast<int>(popup.y - camY),
-            16, 8
-        };
-        SDL_RenderFillRect(renderer, &rect);
+        if (popup.value > 0) {
+            char buf[8];
+            std::snprintf(buf, sizeof(buf), "%d", popup.value);
+            drawText(renderer, buf,
+                     static_cast<int>(popup.x - camX),
+                     static_cast<int>(popup.y - camY));
+        }
     }
 }
 
@@ -920,6 +997,29 @@ void PlayState::renderHUD(SDL_Renderer* renderer) {
     char timerBuf[8];
     std::snprintf(timerBuf, sizeof(timerBuf), "%3d", m_timer);
     drawText(renderer, timerBuf, 208, 16);
+
+    // Lives count (bottom-left area or next to coins)
+    char livesBuf[8];
+    std::snprintf(livesBuf, sizeof(livesBuf), "x%d", m_mario.lives);
+    drawText(renderer, livesBuf, 72, 16);
+
+    // Game over overlay
+    if (m_gameOver) {
+        SDL_SetRenderDrawColor(renderer, 0, 0, 0, 180);
+        SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
+        SDL_Rect overlay = { 0, 0, Constants::NES_WIDTH, Constants::NES_HEIGHT };
+        SDL_RenderFillRect(renderer, &overlay);
+        SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_NONE);
+        drawText(renderer, "GAME OVER", 88, 112);
+    }
+
+    // Level complete overlay
+    if (m_levelComplete && m_flagpoleTimer > 60) {
+        drawText(renderer, "COURSE CLEAR", 72, 80);
+        char scoreBuf2[24];
+        std::snprintf(scoreBuf2, sizeof(scoreBuf2), "YOU GOT %d", m_mario.score);
+        drawText(renderer, scoreBuf2, 64, 100);
+    }
 }
 
 void PlayState::addScorePopup(float x, float y, int value) {

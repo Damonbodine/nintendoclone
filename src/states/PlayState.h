@@ -72,6 +72,11 @@ private:
     bool m_levelComplete = false;
     int m_flagpoleTimer = 0;
 
+    // Death / Game over
+    int m_deathTimer = 0;        // Counts frames after Mario death animation
+    bool m_gameOver = false;
+    int m_gameOverTimer = 0;
+
     // HUD font
     SpriteSheet m_fontSheet;
     std::string m_fontCharMap;
